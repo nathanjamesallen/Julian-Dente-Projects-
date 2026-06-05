@@ -137,16 +137,37 @@ async function runScrapeOne(url) {
   log.ok(`Added ${result.artists.length} artists from ${label.labelName}.`);
 }
 
-async function runScore() {
+async function runScore({ all = false } = {}) {
   requireApiKey();
-  const artists = await readJson(ARTISTS_RAW_FILE, []);
-  if (!artists || artists.length === 0) {
-    log.err('No raw artist data found. Run `discover` or `scrape` first.');
+  const raw = (await readJson(ARTISTS_RAW_FILE, [])) || [];
+  if (!raw || raw.length === 0) {
+    log.err('No raw artist data found. Run `discover` or `bandcamp` first.');
     process.exit(1);
   }
-  const scored = await scoreArtists(artists);
-  await writeJson(ARTISTS_SCORED_FILE, scored);
-  log.ok(`Re-scored ${scored.length} artists.`);
+
+  if (all) {
+    const scored = await scoreArtists(raw);
+    await writeJson(ARTISTS_SCORED_FILE, scored);
+    log.ok(`Re-scored all ${scored.length} artists.`);
+    return;
+  }
+
+  const existingScored = (await readJson(ARTISTS_SCORED_FILE, [])) || [];
+  const scoredKeys = new Set(existingScored.map(crossSourceDedupKey));
+  const toScore = raw.filter((a) => !scoredKeys.has(crossSourceDedupKey(a)));
+
+  if (toScore.length === 0) {
+    log.info(`All ${raw.length} raw artists are already scored. Use --all to re-score everyone.`);
+    return;
+  }
+
+  log.info(
+    `${raw.length} raw artists / ${existingScored.length} already scored / ${toScore.length} new to score.`,
+  );
+  const newScored = await scoreArtists(toScore);
+  const merged = uniqueBy([...existingScored, ...newScored], crossSourceDedupKey);
+  await writeJson(ARTISTS_SCORED_FILE, merged);
+  log.ok(`Total scored on disk: ${merged.length} (${newScored.length} added this run).`);
 }
 
 async function runIngest() {
@@ -214,8 +235,9 @@ program
 
 program
   .command('score')
-  .description('Re-run ICP scoring on already-scraped raw data.')
-  .action(() => runScore());
+  .description('Score raw artists against ICP. Skips artists already in scored data (use --all to re-score everyone).')
+  .option('--all', 'Re-score every artist, including ones already scored.')
+  .action((opts) => runScore({ all: !!opts.all }));
 
 program
   .command('ingest')
