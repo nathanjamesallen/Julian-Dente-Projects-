@@ -1,4 +1,5 @@
 import puppeteer from 'puppeteer';
+import fs from 'fs';
 import { log } from './logger.js';
 import {
   USER_AGENT,
@@ -254,8 +255,34 @@ export async function scrapeLabel(browser, label) {
 }
 
 export async function launchBrowser() {
-  return puppeteer.launch({
-    headless: 'new',
+  const opts = {
+    headless: true,
     args: ['--no-sandbox', '--disable-setuid-sandbox'],
-  });
+  };
+  const envPath = process.env.CHROME_PATH || process.env.PUPPETEER_EXECUTABLE_PATH;
+  if (envPath && fs.existsSync(envPath)) {
+    log.info(`Using Chrome from CHROME_PATH: ${envPath}`);
+    opts.executablePath = envPath;
+  } else {
+    const candidates = [
+      '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+      '/Applications/Chromium.app/Contents/MacOS/Chromium',
+      '/Applications/Brave Browser.app/Contents/MacOS/Brave Browser',
+      '/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge',
+      '/Applications/Arc.app/Contents/MacOS/Arc',
+      '/usr/bin/google-chrome',
+      '/usr/bin/chromium-browser',
+      '/usr/bin/chromium',
+      'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
+      'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
+    ];
+    for (const p of candidates) {
+      if (fs.existsSync(p)) {
+        log.info(`Using system browser: ${p}`);
+        opts.executablePath = p;
+        break;
+      }
+    }
+  }
+  return puppeteer.launch(opts);
 }
