@@ -9,6 +9,7 @@ import { launchBrowser, scrapeLabel } from './src/scraper.js';
 import { scoreArtists } from './src/scorer.js';
 import { exportArtistsCsv, exportLabelsCsv } from './src/exporter.js';
 import { ingestFromSources } from './src/ingest.js';
+import { bandcampDiscover } from './src/bandcamp.js';
 import {
   DATA_DIR,
   LABELS_FILE,
@@ -94,7 +95,7 @@ async function runDiscover({ force = false, skipDiscover = false } = {}) {
     await browser.close().catch(() => {});
   }
 
-  const dedupedArtists = uniqueBy(allArtists, (a) => `${a.labelWebsite}::${a.artistName.toLowerCase()}`);
+  const dedupedArtists = uniqueBy(allArtists, crossSourceDedupKey);
   await writeJson(ARTISTS_RAW_FILE, dedupedArtists);
   log.ok(`Scraped ${dedupedArtists.length} total artists.`);
 
@@ -130,10 +131,7 @@ async function runScrapeOne(url) {
     a.labelInstagram = result.labelContact.instagram || '';
     a.labelContactPage = result.labelContact.contactPage || '';
   }
-  const combined = uniqueBy(
-    [...existing, ...result.artists],
-    (a) => `${a.labelWebsite}::${a.artistName.toLowerCase()}`,
-  );
+  const combined = uniqueBy([...existing, ...result.artists], crossSourceDedupKey);
   await writeJson(ARTISTS_RAW_FILE, combined);
   log.ok(`Added ${result.artists.length} artists from ${label.labelName}.`);
 }
@@ -165,6 +163,23 @@ async function runIngest() {
   log.ok(
     `labels.json now contains ${merged.length} labels (${ingested.length} ingested this run, ${existing.length} pre-existing).`,
   );
+}
+
+function crossSourceDedupKey(a) {
+  if (a.spotifyUrl) return `sp::${a.spotifyUrl.toLowerCase()}`;
+  if (a.bandcampUrl) return `bc::${a.bandcampUrl.toLowerCase()}`;
+  if (a.instagramHandle) return `ig::${a.instagramHandle.toLowerCase()}`;
+  return `nm::${(a.artistName || '').toLowerCase().trim()}`;
+}
+
+async function runBandcamp() {
+  await ensureDataDir();
+  const artists = await bandcampDiscover();
+  const existing = (await readJson(ARTISTS_RAW_FILE, [])) || [];
+  const combined = uniqueBy([...existing, ...artists], crossSourceDedupKey);
+  await writeJson(ARTISTS_RAW_FILE, combined);
+  log.ok(`Added ${artists.length} Bandcamp artists. Raw total now: ${combined.length}.`);
+  log.info('Next: run `node index.js score` then `node index.js export`.');
 }
 
 async function runExport() {
@@ -215,6 +230,11 @@ program
   .command('ingest')
   .description('Pull labels from Wikipedia + Audience Republic, ICP-filter via Claude, verify, and add to labels.json.')
   .action(() => runIngest());
+
+program
+  .command('bandcamp')
+  .description('Discover artists directly via Bandcamp genre tag pages (bedroom-pop, dream-pop, indie-folk, etc).')
+  .action(() => runBandcamp());
 
 program
   .command('export')
