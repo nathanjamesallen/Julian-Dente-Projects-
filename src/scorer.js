@@ -4,7 +4,7 @@ import { log } from './logger.js';
 import { ICP_SYSTEM_PROMPT } from './icp.js';
 
 const anthropic = new Anthropic();
-const MODEL = 'claude-sonnet-4-20250514';
+const MODEL = 'claude-sonnet-4-6';
 
 function buildUserPrompt(a) {
   return `ARTIST: ${a.artistName}

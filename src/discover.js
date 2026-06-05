@@ -9,7 +9,7 @@ const anthropic = new Anthropic();
 export async function discoverLabels() {
   log.step('Phase 1: Discovering labels via Anthropic');
   const resp = await anthropic.messages.create({
-    model: 'claude-sonnet-4-20250514',
+    model: 'claude-sonnet-4-6',
     max_tokens: 4096,
     messages: [{ role: 'user', content: LABEL_DISCOVERY_PROMPT }],
   });
