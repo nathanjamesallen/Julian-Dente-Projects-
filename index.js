@@ -8,6 +8,7 @@ import { discoverLabels, verifyLabels } from './src/discover.js';
 import { launchBrowser, scrapeLabel } from './src/scraper.js';
 import { scoreArtists } from './src/scorer.js';
 import { exportArtistsCsv, exportLabelsCsv } from './src/exporter.js';
+import { ingestFromSources } from './src/ingest.js';
 import {
   DATA_DIR,
   LABELS_FILE,
@@ -149,6 +150,23 @@ async function runScore() {
   log.ok(`Re-scored ${scored.length} artists.`);
 }
 
+async function runIngest() {
+  requireApiKey();
+  const ingested = await ingestFromSources();
+  const existing = await loadManualLabels();
+  const merged = uniqueBy(
+    [
+      ...existing.map((l) => ({ ...l, website: normalizeUrl(l.website) })),
+      ...ingested,
+    ],
+    (l) => l.website,
+  );
+  await fs.writeFile(MANUAL_LABELS_FILE, JSON.stringify(merged, null, 2));
+  log.ok(
+    `labels.json now contains ${merged.length} labels (${ingested.length} ingested this run, ${existing.length} pre-existing).`,
+  );
+}
+
 async function runExport() {
   const scored = await readJson(ARTISTS_SCORED_FILE, []);
   if (!scored || scored.length === 0) {
@@ -192,6 +210,11 @@ program
   .command('score')
   .description('Re-run ICP scoring on already-scraped raw data.')
   .action(() => runScore());
+
+program
+  .command('ingest')
+  .description('Pull labels from Wikipedia + Audience Republic, ICP-filter via Claude, verify, and add to labels.json.')
+  .action(() => runIngest());
 
 program
   .command('export')
