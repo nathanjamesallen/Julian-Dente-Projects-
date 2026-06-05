@@ -36,11 +36,11 @@ export async function verifyLabels(labels) {
     try {
       const res = await axios.get(label.website, {
         headers: { 'User-Agent': USER_AGENT },
-        timeout: 12000,
-        maxRedirects: 5,
-        validateStatus: (s) => s < 400,
+        timeout: 15000,
+        maxRedirects: 8,
+        validateStatus: (s) => s < 500,
       });
-      if (res.status >= 200 && res.status < 400) {
+      if (res.status >= 200 && res.status < 500 && res.status !== 404) {
         log.ok(`✓ ${label.labelName} — ${label.website}`);
         confirmed.push(label);
       } else {

@@ -33,13 +33,18 @@ async function loadManualLabels() {
   return (await readJson(MANUAL_LABELS_FILE, [])) || [];
 }
 
-async function runDiscover({ force = false } = {}) {
+async function runDiscover({ force = false, skipDiscover = false } = {}) {
   requireApiKey();
   await ensureDataDir();
 
   const manual = await loadManualLabels();
-  const discovered = await discoverLabels();
-  const verified = await verifyLabels(discovered);
+  let verified = [];
+  if (skipDiscover) {
+    log.info(`Skipping Anthropic label discovery — using ${manual.length} labels from labels.json only.`);
+  } else {
+    const discovered = await discoverLabels();
+    verified = await verifyLabels(discovered);
+  }
 
   const merged = uniqueBy(
     [...manual.map((l) => ({ ...l, website: normalizeUrl(l.website) })), ...verified],
@@ -174,7 +179,8 @@ program
   .command('discover')
   .description('Run full pipeline: discover labels → scrape rosters → score → export CSV.')
   .option('--force', 'Re-scrape labels even if they already exist in /data.')
-  .action((opts) => runDiscover({ force: !!opts.force }));
+  .option('--skip-discover', 'Skip Anthropic label discovery and use labels.json only.')
+  .action((opts) => runDiscover({ force: !!opts.force, skipDiscover: !!opts.skipDiscover }));
 
 program
   .command('scrape')

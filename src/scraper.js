@@ -10,8 +10,15 @@ import {
   uniqueBy,
 } from './utils.js';
 
-const ROSTER_KEYWORDS = ['artists', 'roster', 'our artists', 'bands', 'musicians', 'our roster'];
-const ROSTER_PATHS = ['/artists', '/roster', '/bands', '/our-artists', '/musicians'];
+const ROSTER_KEYWORDS = [
+  'artists', 'roster', 'our artists', 'bands', 'musicians', 'our roster',
+  'the roster', 'label artists', 'our bands', 'all artists', 'our roster',
+];
+const ROSTER_PATHS = [
+  '/artists', '/roster', '/bands', '/our-artists', '/musicians',
+  '/pages/artists', '/pages/roster', '/pages/our-artists', '/the-roster',
+  '/collections', '/collections/all', '/artist',
+];
 const PAGE_TIMEOUT = 25000;
 
 async function newPage(browser) {
@@ -229,7 +236,9 @@ export async function scrapeLabel(browser, label) {
       log.dim(`  [${i + 1}/${trimmed.length}] ${link.href}`);
       try {
         const artist = await scrapeArtistPage(page, link.href, label);
-        if (artist && artist.artistName && artist.bio && artist.bio.length > 80) {
+        const hasContact = artist && (artist.spotifyUrl || artist.instagramHandle || artist.bandcampUrl || artist.bookingEmail);
+        const hasBio = artist && artist.bio && artist.bio.length > 40;
+        if (artist && artist.artistName && (hasBio || hasContact)) {
           result.artists.push(artist);
         }
       } catch (e) {
