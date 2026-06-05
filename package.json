@@ -1,0 +1,30 @@
+{
+  "name": "label-scout",
+  "version": "1.0.0",
+  "description": "Autonomously discover indie record labels, scrape rosters, score artists against Julian Dente's ICP, and export CRM-ready CSVs.",
+  "type": "module",
+  "main": "index.js",
+  "bin": {
+    "label-scout": "./index.js"
+  },
+  "scripts": {
+    "discover": "node index.js discover",
+    "scrape": "node index.js scrape",
+    "score": "node index.js score",
+    "export": "node index.js export"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.27.0",
+    "axios": "^1.7.7",
+    "cheerio": "^1.0.0",
+    "chalk": "^5.3.0",
+    "commander": "^12.1.0",
+    "csv-writer": "^1.6.0",
+    "dotenv": "^16.4.5",
+    "p-limit": "^6.1.0",
+    "puppeteer": "^23.5.0"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
