@@ -85,3 +85,10 @@ export function uniqueBy(arr, keyFn) {
   }
   return out;
 }
+
+export function crossSourceDedupKey(a) {
+  if (a.spotifyUrl) return `sp::${a.spotifyUrl.toLowerCase()}`;
+  if (a.bandcampUrl) return `bc::${a.bandcampUrl.toLowerCase()}`;
+  if (a.instagramHandle) return `ig::${a.instagramHandle.toLowerCase()}`;
+  return `nm::${(a.artistName || '').toLowerCase().trim()}`;
+}

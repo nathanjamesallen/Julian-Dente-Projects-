@@ -20,6 +20,7 @@ import {
   writeJson,
   uniqueBy,
   normalizeUrl,
+  crossSourceDedupKey,
 } from './src/utils.js';
 
 const MANUAL_LABELS_FILE = path.resolve('labels.json');
@@ -165,20 +166,10 @@ async function runIngest() {
   );
 }
 
-function crossSourceDedupKey(a) {
-  if (a.spotifyUrl) return `sp::${a.spotifyUrl.toLowerCase()}`;
-  if (a.bandcampUrl) return `bc::${a.bandcampUrl.toLowerCase()}`;
-  if (a.instagramHandle) return `ig::${a.instagramHandle.toLowerCase()}`;
-  return `nm::${(a.artistName || '').toLowerCase().trim()}`;
-}
-
 async function runBandcamp() {
   await ensureDataDir();
-  const artists = await bandcampDiscover();
-  const existing = (await readJson(ARTISTS_RAW_FILE, [])) || [];
-  const combined = uniqueBy([...existing, ...artists], crossSourceDedupKey);
-  await writeJson(ARTISTS_RAW_FILE, combined);
-  log.ok(`Added ${artists.length} Bandcamp artists. Raw total now: ${combined.length}.`);
+  const added = await bandcampDiscover();
+  log.ok(`Bandcamp run added ${added.length} new artists to the raw store.`);
   log.info('Next: run `node index.js score` then `node index.js export`.');
 }
 

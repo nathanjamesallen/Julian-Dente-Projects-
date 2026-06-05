@@ -3,8 +3,13 @@ import {
   USER_AGENT,
   sleep,
   uniqueBy,
+  crossSourceDedupKey,
   extractEmail,
   extractInstagramHandle,
+  ARTISTS_RAW_FILE,
+  ensureDataDir,
+  readJson,
+  writeJson,
 } from './utils.js';
 import { launchBrowser } from './scraper.js';
 
@@ -23,6 +28,17 @@ const TAGS = [
 
 const PER_TAG_CAP = 50;
 const TOTAL_ARTIST_CAP = 250;
+const SAVE_EVERY = 10;
+
+async function saveProgress(initial, fresh) {
+  const combined = uniqueBy([...initial, ...fresh], crossSourceDedupKey);
+  await writeJson(ARTISTS_RAW_FILE, combined);
+}
+
+function isBrowserDead(err) {
+  const m = (err && err.message) || '';
+  return /Connection closed|Target closed|browser has disconnected|detached Frame|Protocol error/i.test(m);
+}
 
 async function fetchTagArtists(browser, tag) {
   const url = `https://bandcamp.com/tag/${tag}?tab=highlights`;
@@ -137,29 +153,78 @@ async function scrapeBandcampArtist(browser, url) {
 
 export async function bandcampDiscover() {
   log.step('Bandcamp tag discovery');
-  const browser = await launchBrowser();
+  await ensureDataDir();
+  const initial = (await readJson(ARTISTS_RAW_FILE, [])) || [];
+  log.info(`Existing raw artists on disk: ${initial.length}`);
+  const alreadyScrapedBC = new Set(
+    initial.filter((a) => a.bandcampUrl).map((a) => a.bandcampUrl.toLowerCase()),
+  );
+
+  let browser = await launchBrowser();
   const allUrls = new Set();
+  const fresh = [];
   try {
     for (const tag of TAGS) {
-      const urls = await fetchTagArtists(browser, tag);
-      urls.forEach((u) => allUrls.add(u));
-      await sleep(1500);
-    }
-    log.info(`Total unique Bandcamp artists collected: ${allUrls.size}`);
-
-    const list = Array.from(allUrls).slice(0, TOTAL_ARTIST_CAP);
-    const artists = [];
-    for (let i = 0; i < list.length; i++) {
-      log.dim(`  [${i + 1}/${list.length}] ${list[i]}`);
-      const a = await scrapeBandcampArtist(browser, list[i]);
-      if (a && a.artistName && (a.bio.length > 40 || a.releases.length > 0 || a.spotifyUrl || a.instagramHandle)) {
-        artists.push(a);
+      try {
+        const urls = await fetchTagArtists(browser, tag);
+        urls.forEach((u) => allUrls.add(u));
+      } catch (e) {
+        if (isBrowserDead(e)) {
+          log.warn(`Browser died during tag fetch — relaunching.`);
+          try { await browser.close(); } catch {}
+          browser = await launchBrowser();
+        } else {
+          log.warn(`  tag ${tag} error: ${e.message.slice(0, 80)}`);
+        }
       }
       await sleep(1500);
     }
-    log.ok(`Scraped ${artists.length} Bandcamp artists.`);
-    return artists;
+    log.info(`Total unique Bandcamp candidates collected: ${allUrls.size}`);
+
+    const toScrape = Array.from(allUrls)
+      .filter((u) => !alreadyScrapedBC.has(u.toLowerCase()))
+      .slice(0, TOTAL_ARTIST_CAP);
+    log.info(`After skipping already-scraped: ${toScrape.length} to scrape.`);
+
+    for (let i = 0; i < toScrape.length; i++) {
+      const url = toScrape[i];
+      log.dim(`  [${i + 1}/${toScrape.length}] ${url}`);
+      let a = null;
+      try {
+        a = await scrapeBandcampArtist(browser, url);
+      } catch (e) {
+        if (isBrowserDead(e)) {
+          log.warn(`  Browser crashed — relaunching and retrying once.`);
+          try { await browser.close(); } catch {}
+          browser = await launchBrowser();
+          try {
+            a = await scrapeBandcampArtist(browser, url);
+          } catch (e2) {
+            log.warn(`  retry failed: ${e2.message.slice(0, 80)}`);
+          }
+        } else {
+          log.warn(`  scrape failed: ${e.message.slice(0, 80)}`);
+        }
+      }
+      if (
+        a &&
+        a.artistName &&
+        (a.bio.length > 40 || a.releases.length > 0 || a.spotifyUrl || a.instagramHandle)
+      ) {
+        fresh.push(a);
+      }
+
+      if ((i + 1) % SAVE_EVERY === 0) {
+        await saveProgress(initial, fresh);
+        log.dim(`  → progress saved (${fresh.length} kept so far)`);
+      }
+      await sleep(1500);
+    }
+
+    await saveProgress(initial, fresh);
+    log.ok(`Bandcamp run complete: ${fresh.length} new artists added to raw store.`);
+    return fresh;
   } finally {
-    await browser.close().catch(() => {});
+    try { await browser.close(); } catch {}
   }
 }
